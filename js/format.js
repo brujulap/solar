@@ -4,20 +4,69 @@ export function isNum(value) {
   return value != null && value !== "" && Number.isFinite(Number(value));
 }
 
+const GROUP_SEPARATOR = /[.\u00a0\u202f\u2009]/;
+
+function intlGroupsThousands() {
+  try {
+    const sample = new Intl.NumberFormat("es-ES", {
+      useGrouping: "always",
+      minimumGroupingDigits: 1,
+      maximumFractionDigits: 0,
+    }).format(4907);
+    return sample !== "4907" && GROUP_SEPARATOR.test(sample);
+  } catch {
+    return false;
+  }
+}
+
+const USE_INTL_GROUPING = intlGroupsThousands();
+
+function manualGroup(value, minDigits, maxDigits) {
+  const negative = value < 0;
+  const factor = 10 ** maxDigits;
+  const rounded = Math.round((Math.abs(value) + Number.EPSILON) * factor) / factor;
+  const sign = negative && rounded !== 0 ? "\u2212" : "";
+  let intPart;
+  let frac = "";
+  if (maxDigits > 0) {
+    const [whole, fraction = ""] = rounded.toFixed(maxDigits).split(".");
+    intPart = whole;
+    frac = fraction.replace(/0+$/, "");
+    while (frac.length < minDigits) frac += "0";
+  } else {
+    intPart = String(Math.trunc(rounded));
+  }
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return frac ? `${sign}${grouped},${frac}` : `${sign}${grouped}`;
+}
+
+function formatDigits(value, minDigits, maxDigits) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "sin dato";
+  if (!USE_INTL_GROUPING) return manualGroup(n, minDigits, maxDigits);
+  try {
+    return new Intl.NumberFormat("es-ES", {
+      useGrouping: "always",
+      minimumGroupingDigits: 1,
+      minimumFractionDigits: minDigits,
+      maximumFractionDigits: maxDigits,
+    }).format(n);
+  } catch {
+    return manualGroup(n, minDigits, maxDigits);
+  }
+}
+
 export function formatNumber(value, digits) {
-  return new Intl.NumberFormat("es-ES", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(Number(value));
+  return formatDigits(value, digits, digits);
 }
 
 export function formatAxis(value) {
-  return new Intl.NumberFormat("es-ES", { maximumFractionDigits: 1 }).format(Number(value));
+  return formatDigits(value, 0, 1);
 }
 
 export function formatInt(value) {
   if (!isNum(value)) return "sin dato";
-  return new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 }).format(Number(value));
+  return formatDigits(value, 0, 0);
 }
 
 function missing() {

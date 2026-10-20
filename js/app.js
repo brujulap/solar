@@ -41,6 +41,7 @@ import {
   latestId,
   neighborId,
   netWh,
+  openIntervalIndex,
   periodId,
   periodList,
   samePeriodLastYear,
@@ -261,6 +262,35 @@ function timeCategories(points) {
   return { ids, shorts, titles };
 }
 
+function splitOpenInterval(series, openIndex) {
+  if (openIndex < 1) return series;
+  const result = [];
+  for (const entry of series) {
+    const notes = entry.notes || entry.values.map(() => "");
+    result.push({
+      ...entry,
+      values: entry.values.map((value, index) => (index === openIndex ? null : value)),
+    });
+    result.push({
+      ...entry,
+      dash: true,
+      area: false,
+      values: entry.values.map((value, index) => (index === openIndex || index === openIndex - 1 ? value : null)),
+      notes: notes.map((note, index) => {
+        if (index !== openIndex) return "";
+        return note ? `${note} · en curso` : "en curso";
+      }),
+    });
+  }
+  return result;
+}
+
+function openIndexFor(date, points, intervalMinutes) {
+  const today = state.indexed?.today || {};
+  if (!date || date !== today.date) return -1;
+  return openIntervalIndex(points, intervalMinutes, today.last_interval_end || today.last_report_at);
+}
+
 function curvePower(points) {
   const hasW = points.some((point) => isNum(point.production_w) || isNum(point.consumption_w));
   if (hasW) {
@@ -281,10 +311,10 @@ function curvePower(points) {
   };
 }
 
-function paintCurve(el, points, { slider, ariaLabel }) {
+function paintCurve(el, points, { slider, ariaLabel, openIndex = -1 }) {
   const power = curvePower(points);
   const categories = timeCategories(points);
-  const series = power.series.filter((entry) => alive(entry.values));
+  const series = splitOpenInterval(power.series.filter((entry) => alive(entry.values)), openIndex);
   el.hidden = series.length === 0;
   if (!series.length || !window.echarts) return false;
   setChart(el, {
@@ -315,7 +345,6 @@ function renderHoy() {
     const end = today.last_interval_end || today.last_report_at;
     note.push(end ? `Día parcial, hasta ${formatTime(end)}.` : "Día parcial.");
   }
-  document.getElementById("hoy-note").textContent = note.join(" ");
   const updated = dateTimeParts(today.last_report_at || today.last_interval_end);
   document.getElementById("hoy-cards").replaceChildren(
     metricCard({ kind: "production", label: "Producción", parts: energyParts(today.production_wh), calc: isCalculated("production", day, av) }),
@@ -347,6 +376,9 @@ function renderHoy() {
 
   const pack = today.date ? state.indexed.intraday[today.date] : null;
   const points = pack?.points || [];
+  const openIndex = openIndexFor(today.date, points, pack?.interval_minutes);
+  if (openIndex >= 0) note.push("El último intervalo todavía se está completando.");
+  document.getElementById("hoy-note").textContent = note.join(" ");
   const empty = document.getElementById("hoy-chart-empty");
   const chart = document.getElementById("chart-hoy");
   const open = document.getElementById("hoy-open-curve");
@@ -359,7 +391,11 @@ function renderHoy() {
     chart.hidden = true;
     return;
   }
-  const painted = paintCurve(chart, points, { slider: false, ariaLabel: `Curva de potencia del ${formatDayLong(today.date)}` });
+  const painted = paintCurve(chart, points, {
+    slider: false,
+    ariaLabel: `Curva de potencia del ${formatDayLong(today.date)}`,
+    openIndex,
+  });
   empty.hidden = painted;
   if (!painted) chart.hidden = true;
 }
@@ -402,12 +438,15 @@ function renderCurva() {
     note.push(end ? `Día parcial, hasta ${formatTime(end)}.` : "Día parcial.");
   }
   const showFlow = points.some((point) => isNum(point.import_wh) || isNum(point.export_wh));
+  const openIndex = openIndexFor(date, points, pack?.interval_minutes);
+  if (openIndex >= 0) note.push("El último intervalo todavía se está completando.");
   document.getElementById("curve-note").textContent = note.join(" ");
   document.getElementById("curve-grid-panel").hidden = empty || !showFlow;
   if (empty) return;
   paintCurve(document.getElementById("chart-curve"), points, {
     slider: true,
     ariaLabel: `Curva de potencia del ${formatDayLong(date)}`,
+    openIndex,
   });
   if (showFlow) {
     const categories = timeCategories(points);

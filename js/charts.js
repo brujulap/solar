@@ -55,6 +55,12 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+function pointValue(row) {
+  if (row?.data && typeof row.data === "object" && "value" in row.data) return row.data.value;
+  if (Array.isArray(row?.value)) return row.value[row.value.length - 1];
+  return row?.value;
+}
+
 function mount(el) {
   if (!el || !window.echarts) return null;
   let chart = window.echarts.getInstanceByDom(el);
@@ -140,7 +146,8 @@ export function setChart(el, config) {
     legend: {
       type: "scroll",
       top: 0,
-      left: 0,
+      right: 0,
+      data: series.filter((entry) => !entry.dash).map((entry) => entry.name),
       itemWidth: 12,
       itemHeight: 8,
       icon: "roundRect",
@@ -150,14 +157,24 @@ export function setChart(el, config) {
     grid: {
       left: 4,
       right: 8,
-      top: series.length ? 34 : 16,
+      top: series.length ? (unit ? 46 : 34) : 22,
       bottom: showSlider ? 32 : 4,
       containLabel: true,
     },
     tooltip: {
       trigger: "axis",
       confine: true,
-      axisPointer: { type: config.pointer || "line" },
+      axisPointer: {
+        type: config.pointer || "line",
+        label: {
+          show: true,
+          formatter(params) {
+            if (params.axisDimension === "y" && unit) return formatChartValue(params.value, unit);
+            const label = shorts[params.value] || params.value;
+            return label == null ? "" : String(label);
+          },
+        },
+      },
       backgroundColor: palette.surface,
       borderColor: palette.line,
       textStyle: { color: palette.text, fontSize: 12 },
@@ -167,12 +184,17 @@ export function setChart(el, config) {
         if (!rows.length) return "";
         const id = rows[0].axisValue;
         const title = titles[id] || shorts[id] || id;
-        const body = rows.map((row) => {
-          const raw = row.data && typeof row.data === "object" ? row.data.value : row.data;
+        const chosen = new Map();
+        for (const row of rows) {
+          const raw = pointValue(row);
+          if (raw == null || Number.isNaN(Number(raw)) || !row.seriesName) continue;
           const note = row.data && typeof row.data === "object" ? row.data.note : "";
-          const shown = formatChartValue(raw, unit);
+          const prev = chosen.get(row.seriesName);
+          if (!prev || (note && !prev.note)) chosen.set(row.seriesName, { row, raw, note });
+        }
+        const body = [...chosen.values()].map(({ row, raw, note }) => {
           const suffix = note ? ` (${note})` : "";
-          return `${row.marker} ${escapeHtml(row.seriesName)}: ${escapeHtml(shown)}${escapeHtml(suffix)}`;
+          return `${row.marker} ${escapeHtml(row.seriesName)}: ${escapeHtml(formatChartValue(raw, unit))}${escapeHtml(suffix)}`;
         }).join("<br>");
         return `${escapeHtml(title)}<br>${body}`;
       },
@@ -195,6 +217,16 @@ export function setChart(el, config) {
     },
     yAxis: {
       type: "value",
+      name: unit || "",
+      nameLocation: "end",
+      nameGap: 8,
+      nameTextStyle: {
+        color: palette.muted,
+        fontSize: 12,
+        fontWeight: 600,
+        align: "left",
+        padding: [0, 0, 0, 2],
+      },
       min: (extent) => Math.min(0, extent.min),
       axisLabel: {
         color: palette.muted,
@@ -227,17 +259,21 @@ export function setChart(el, config) {
         name: entry.name,
         type,
         data,
-        itemStyle: { color },
-        lineStyle: { color, width: 2 },
-        showSymbol: false,
+        itemStyle: { color, opacity: entry.dash ? 0.72 : 1 },
+        lineStyle: {
+          color,
+          width: 2,
+          type: entry.dash ? "dashed" : "solid",
+        },
+        showSymbol: Boolean(entry.dash),
         symbol: "circle",
-        symbolSize: 7,
+        symbolSize: entry.dash ? 6 : 7,
         connectNulls: false,
         barMaxWidth: 28,
         emphasis: { focus: "series" },
-        z: type === "line" ? 3 : 2,
+        z: entry.dash ? 4 : (type === "line" ? 3 : 2),
       };
-      if (entry.area && type === "line") {
+      if (entry.area && type === "line" && !entry.dash) {
         serie.areaStyle = {
           color: new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: withAlpha(color, 0.38) },
