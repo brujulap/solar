@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Producción y consumo de una instalación solar. Los datos se descifran en el navegador.">
+  <meta name="theme-color" content="#f3eee6">
+  <meta name="color-scheme" content="light dark">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Solar</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("solar.theme");
+        var dark = saved === "dark" || (saved !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      } catch (e) {
+        document.documentElement.setAttribute("data-theme", "light");
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <a class="skip" href="#contenido">Ir al contenido</a>
+
+  <div id="login" class="login">
+    <form id="login-form" class="login-card" method="post" action="#">
+      <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
+        <circle cx="24" cy="24" r="9" fill="currentColor"/>
+        <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+          <path d="M24 4v6M24 38v6M4 24h6M38 24h6"/>
+          <path d="M10 10l4.2 4.2M33.8 33.8 38 38M38 10l-4.2 4.2M14.2 33.8 10 38"/>
+        </g>
+      </svg>
+      <p class="eyebrow">Instalación fotovoltaica</p>
+      <h1>Solar</h1>
+      <p id="login-demo" class="demo-hint" hidden>Modo demostración. Los datos son ficticios.</p>
+      <div class="field">
+        <label for="password">Contraseña</label>
+        <div class="password-row">
+          <input id="password" name="password" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" aria-describedby="login-error login-help">
+          <button type="button" id="toggle-password" aria-pressed="false" aria-label="Mostrar contraseña">Mostrar</button>
+        </div>
+      </div>
+      <label class="check" for="remember">
+        <input id="remember" type="checkbox">
+        <span>Recordarme en este dispositivo</span>
+      </label>
+      <p id="login-help" class="help">Se guarda la clave de cifrado en este dispositivo, no la contraseña.</p>
+      <p id="login-error" class="error" role="alert" hidden></p>
+      <p id="login-status" class="status" role="status"></p>
+      <button id="login-submit" type="submit">Entrar</button>
+      <p class="help">Los datos viajan cifrados y se abren en este dispositivo.</p>
+    </form>
+    <noscript>
+      <p class="login-card">Esta página necesita JavaScript para descifrar los datos.</p>
+    </noscript>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <div class="sticky">
+      <div class="wrap top-wrap">
+        <header class="top">
+          <div class="top-row">
+            <div class="brand">
+              <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
+                <circle cx="24" cy="24" r="9" fill="currentColor"/>
+                <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+                  <path d="M24 4v6M24 38v6M4 24h6M38 24h6"/>
+                  <path d="M10 10l4.2 4.2M33.8 33.8 38 38M38 10l-4.2 4.2M14.2 33.8 10 38"/>
+                </g>
+              </svg>
+              <h1 id="app-title" tabindex="-1">Solar</h1>
+            </div>
+            <div class="actions">
+              <button type="button" id="theme-toggle" class="icon-btn" aria-label="Activar tema oscuro" aria-pressed="false">
+                <svg class="only-light" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M15.5 3.5a8 8 0 1 0 5 12.5A7 7 0 0 1 15.5 3.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                </svg>
+                <svg class="only-dark" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                  <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5 5l1.6 1.6M17.4 17.4 19 19M19 5l-1.6 1.6M6.6 17.4 5 19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <button type="button" id="logout">Cerrar sesión</button>
+            </div>
+          </div>
+          <p id="system-line" class="system-line"></p>
+        </header>
+        <p id="demo-banner" class="banner" hidden>Datos ficticios de demostración.</p>
+        <nav class="tabs" role="tablist" aria-label="Secciones">
+          <button type="button" role="tab" id="tab-hoy" data-view="hoy" aria-controls="view-hoy" aria-selected="true">Hoy</button>
+          <button type="button" role="tab" id="tab-curva" data-view="curva" aria-controls="view-curva" aria-selected="false" tabindex="-1">Curva</button>
+          <button type="button" role="tab" id="tab-periodos" data-view="periodos" aria-controls="view-periodos" aria-selected="false" tabindex="-1">Periodos</button>
+          <button type="button" role="tab" id="tab-comparar" data-view="comparar" aria-controls="view-comparar" aria-selected="false" tabindex="-1">Comparar</button>
+          <button type="button" role="tab" id="tab-red" data-view="red" aria-controls="view-red" aria-selected="false" tabindex="-1">Red</button>
+          <button type="button" role="tab" id="tab-records" data-view="records" aria-controls="view-records" aria-selected="false" tabindex="-1">Récords</button>
+        </nav>
+      </div>
+    </div>
+
+    <main id="contenido" class="wrap">
+      <section id="view-hoy" class="view" role="tabpanel" aria-labelledby="tab-hoy" tabindex="0">
+        <div class="hero">
+          <div class="hero-top">
+            <div>
+              <p class="eyebrow">Hoy</p>
+              <h2 id="hoy-date">—</h2>
+            </div>
+            <div id="hoy-chips" class="chips"></div>
+          </div>
+          <div id="hoy-balance" class="balance"></div>
+          <p id="hoy-note" class="note"></p>
+        </div>
+        <div id="hoy-cards" class="cards"></div>
+        <section class="panel" id="hoy-chart-panel">
+          <div class="panel-head">
+            <h3>Curva de hoy</h3>
+            <button type="button" id="hoy-curve-reset" class="text-btn">Restablecer zoom</button>
+          </div>
+          <p id="hoy-chart-empty" class="note" hidden>Sin curva para hoy.</p>
+          <div id="chart-hoy" class="chart mini"></div>
+          <button type="button" id="hoy-open-curve" class="text-btn">Ver el día completo</button>
+        </section>
+      </section>
+
+      <section id="view-curva" class="view" role="tabpanel" aria-labelledby="tab-curva" tabindex="0" hidden>
+        <div class="toolbar">
+          <div class="pager">
+            <button type="button" id="curve-prev" aria-label="Día anterior">‹</button>
+            <div id="curve-label" class="label" aria-live="polite"></div>
+            <button type="button" id="curve-next" aria-label="Día siguiente">›</button>
+          </div>
+          <label class="select-label" for="curve-day">Día
+            <select id="curve-day"></select>
+          </label>
+        </div>
+        <p id="curve-note" class="note"></p>
+        <p id="curve-empty" class="note" hidden>Sin curva para este día.</p>
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Producción y consumo</h3>
+            <button type="button" id="curve-reset" class="text-btn">Restablecer zoom</button>
+          </div>
+          <div id="chart-curve" class="chart"></div>
+        </section>
+        <section class="panel" id="curve-grid-panel">
+          <div class="panel-head">
+            <h3>Importación y exportación <span class="badge">calculado</span></h3>
+          </div>
+          <div id="chart-curve-grid" class="chart"></div>
+        </section>
+      </section>
+
+      <section id="view-periodos" class="view" role="tabpanel" aria-labelledby="tab-periodos" tabindex="0" hidden>
+        <div class="segment" role="group" aria-label="Escala">
+          <button type="button" data-grain-group="period" data-grain="day" aria-pressed="true">Día</button>
+          <button type="button" data-grain-group="period" data-grain="week" aria-pressed="false">Semana</button>
+          <button type="button" data-grain-group="period" data-grain="month" aria-pressed="false">Mes</button>
+          <button type="button" data-grain-group="period" data-grain="year" aria-pressed="false">Año</button>
+        </div>
+        <div class="pager">
+          <button type="button" id="period-prev" aria-label="Periodo anterior">‹</button>
+          <div id="period-label" class="label" aria-live="polite"></div>
+          <button type="button" id="period-next" aria-label="Periodo siguiente">›</button>
+        </div>
+        <p id="period-context" class="context"></p>
+        <div id="period-detail"></div>
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Producción y consumo</h3>
+            <button type="button" id="period-reset" class="text-btn">Restablecer zoom</button>
+          </div>
+          <p id="period-energy-missing" class="note"></p>
+          <p id="period-energy-empty" class="note" hidden>Sin dato</p>
+          <div id="chart-period-energy" class="chart"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Importación y exportación</h3>
+          </div>
+          <p id="period-grid-missing" class="note"></p>
+          <p id="period-grid-empty" class="note" hidden>Sin dato</p>
+          <div id="chart-period-grid" class="chart"></div>
+        </section>
+        <div class="table-wrap">
+          <table id="period-table" data-caption="Producción, consumo e intercambios con la red"></table>
+        </div>
+      </section>
+
+      <section id="view-comparar" class="view" role="tabpanel" aria-labelledby="tab-comparar" tabindex="0" hidden>
+        <div class="segment" role="group" aria-label="Escala de comparación">
+          <button type="button" data-grain-group="compare" data-grain="day" aria-pressed="false">Día</button>
+          <button type="button" data-grain-group="compare" data-grain="week" aria-pressed="false">Semana</button>
+          <button type="button" data-grain-group="compare" data-grain="month" aria-pressed="true">Mes</button>
+          <button type="button" data-grain-group="compare" data-grain="year" aria-pressed="false">Año</button>
+        </div>
+        <div class="chips-row">
+          <button type="button" id="compare-year" class="chip-btn">Mismo periodo, año anterior</button>
+          <button type="button" id="compare-prev" class="chip-btn">Periodo anterior</button>
+        </div>
+        <div class="compare-picks">
+          <label for="compare-a">Periodo A
+            <select id="compare-a"></select>
+          </label>
+          <span class="vs" aria-hidden="true">vs</span>
+          <label for="compare-b">Periodo B
+            <select id="compare-b"></select>
+          </label>
+        </div>
+        <p id="compare-note" class="note" role="status" hidden></p>
+        <div id="compare-legend" class="legend-names"></div>
+        <div id="compare-metrics" class="cmp-grid"></div>
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Energía</h3>
+          </div>
+          <p id="compare-empty" class="note" hidden>Sin dato</p>
+          <div id="chart-compare" class="chart chart-short"></div>
+        </section>
+      </section>
+
+      <section id="view-red" class="view" role="tabpanel" aria-labelledby="tab-red" tabindex="0" hidden>
+        <div class="segment" role="group" aria-label="Escala del balance">
+          <button type="button" data-grain-group="grid" data-grain="day" aria-pressed="true">Día</button>
+          <button type="button" data-grain-group="grid" data-grain="week" aria-pressed="false">Semana</button>
+          <button type="button" data-grain-group="grid" data-grain="month" aria-pressed="false">Mes</button>
+          <button type="button" data-grain-group="grid" data-grain="year" aria-pressed="false">Año</button>
+        </div>
+        <div class="pager">
+          <button type="button" id="grid-prev" aria-label="Periodo anterior">‹</button>
+          <div id="grid-label" class="label" aria-live="polite"></div>
+          <button type="button" id="grid-next" aria-label="Periodo siguiente">›</button>
+        </div>
+        <p id="grid-context" class="context"></p>
+        <div id="grid-summary" class="stats"></div>
+        <p id="grid-note" class="note"></p>
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Importación y exportación</h3>
+            <button type="button" id="grid-reset" class="text-btn">Restablecer zoom</button>
+          </div>
+          <p id="grid-empty" class="note" hidden>Sin dato</p>
+          <div id="chart-grid" class="chart"></div>
+        </section>
+        <div class="table-wrap">
+          <table id="grid-table" data-caption="Balance de red del periodo visible"></table>
+        </div>
+      </section>
+
+      <section id="view-records" class="view" role="tabpanel" aria-labelledby="tab-records" tabindex="0" hidden>
+        <h2 class="section-title">Récords</h2>
+        <div id="records-root" class="records"></div>
+      </section>
+
+      <footer class="footer">
+        <p id="footer-updated"></p>
+        <p id="system-extra"></p>
+        <p>Los datos del repositorio están cifrados. Se descifran solo en este dispositivo.</p>
+        <details>
+          <summary>Sobre los datos</summary>
+          <ul id="notes-list"></ul>
+        </details>
+      </footer>
+    </main>
+  </div>
+
+  <script src="vendor/echarts.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
