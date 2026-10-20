@@ -208,3 +208,15 @@ export function kwhOrNull(wh) {
 export function kwOrNull(w) {
   return finite(w) ? Number(w) / 1000 : null;
 }
+
+export function openIntervalIndex(points, intervalMinutes, lastIntervalEnd) {
+  if (!Array.isArray(points) || points.length < 2 || !lastIntervalEnd) return -1;
+  const minutes = finite(intervalMinutes) ? Number(intervalMinutes) : 15;
+  const last = points.length - 1;
+  const start = Date.parse(points[last]?.t);
+  const clock = Date.parse(lastIntervalEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(clock)) return -1;
+  const nominalEnd = start + minutes * 60 * 1000;
+  if (clock >= start - 1000 && clock < nominalEnd - 1000) return last;
+  return -1;
+}
