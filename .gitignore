@@ -1,0 +1,14 @@
+# Nunca subir datos en claro, cachés ni credenciales
+*.plain.json
+*.dec.json
+data/*.json
+!data/*.enc.json
+.env
+.env.*
+tokens.json
+.enphase/
+cache/
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
