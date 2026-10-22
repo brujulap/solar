@@ -15,6 +15,7 @@ function tokens() {
     exp: read("--exp") || "#0e7c6b",
     accent: read("--accent") || "#e09a12",
     gridline: read("--gridline") || "rgba(40,32,20,.08)",
+    font: read("--font") || "system-ui, sans-serif",
   };
 }
 
@@ -109,7 +110,7 @@ function zoomParts(palette, count, { slider, inside }) {
       handleSize: 14,
       handleStyle: { color: palette.accent, borderColor: palette.accent },
       moveHandleSize: 0,
-      textStyle: { color: palette.muted, fontSize: 10 },
+      textStyle: { color: palette.muted, fontSize: 11 },
       dataBackground: {
         lineStyle: { color: palette.prod },
         areaStyle: { color: withAlpha(palette.prod, 0.15) },
@@ -137,28 +138,36 @@ export function setChart(el, config) {
     inside: config.inside !== false,
   });
   const showSlider = zoom.some((part) => part.type === "slider");
+  const width = el.clientWidth || window.innerWidth;
+  const narrow = width < 560;
+  const axisSize = narrow ? 11 : 12;
+  const legendData = series.filter((entry) => !entry.dash).map((entry) => entry.name);
 
   chart.setOption({
     animation: motionOk(),
-    animationDuration: 350,
-    textStyle: { fontFamily: "Segoe UI, system-ui, sans-serif" },
+    animationDuration: 320,
+    animationEasing: "cubicOut",
+    animationDurationUpdate: 220,
+    textStyle: { fontFamily: palette.font },
     aria: { enabled: false },
     legend: {
       type: "scroll",
+      show: legendData.length > 1,
       top: 0,
-      right: 0,
-      data: series.filter((entry) => !entry.dash).map((entry) => entry.name),
-      itemWidth: 12,
-      itemHeight: 8,
+      left: 0,
+      data: legendData,
+      itemWidth: 10,
+      itemHeight: 10,
+      itemGap: 16,
       icon: "roundRect",
-      textStyle: { color: palette.muted, fontSize: 12 },
+      textStyle: { color: palette.text, fontSize: 12, fontFamily: palette.font },
       pageTextStyle: { color: palette.muted },
     },
     grid: {
       left: 4,
       right: 8,
-      top: series.length ? (unit ? 46 : 34) : 22,
-      bottom: showSlider ? 32 : 4,
+      top: legendData.length > 1 ? (unit ? 52 : 34) : (unit ? 30 : 12),
+      bottom: showSlider ? 36 : 4,
       containLabel: true,
     },
     tooltip: {
@@ -177,8 +186,9 @@ export function setChart(el, config) {
       },
       backgroundColor: palette.surface,
       borderColor: palette.line,
-      textStyle: { color: palette.text, fontSize: 12 },
-      extraCssText: "border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);",
+      padding: [8, 10],
+      textStyle: { color: palette.text, fontSize: 13, fontFamily: palette.font },
+      extraCssText: "border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.14);font-variant-numeric:tabular-nums;",
       formatter(params) {
         const rows = Array.isArray(params) ? params : [params];
         if (!rows.length) return "";
@@ -193,10 +203,12 @@ export function setChart(el, config) {
           if (!prev || (note && !prev.note)) chosen.set(row.seriesName, { row, raw, note });
         }
         const body = [...chosen.values()].map(({ row, raw, note }) => {
-          const suffix = note ? ` (${note})` : "";
-          return `${row.marker} ${escapeHtml(row.seriesName)}: ${escapeHtml(formatChartValue(raw, unit))}${escapeHtml(suffix)}`;
-        }).join("<br>");
-        return `${escapeHtml(title)}<br>${body}`;
+          const suffix = note ? ` <span style="color:${palette.muted}">(${escapeHtml(note)})</span>` : "";
+          return `<div style="display:flex;justify-content:space-between;gap:16px;align-items:baseline;margin-top:3px">`
+            + `<span>${row.marker}${escapeHtml(row.seriesName)}${suffix}</span>`
+            + `<b style="font-weight:650">${escapeHtml(formatChartValue(raw, unit))}</b></div>`;
+        }).join("");
+        return `<div style="color:${palette.muted};font-size:12px;margin-bottom:2px">${escapeHtml(title)}</div>${body}`;
       },
     },
     dataZoom: zoom,
@@ -207,11 +219,17 @@ export function setChart(el, config) {
       axisTick: { show: false },
       axisLabel: {
         color: palette.muted,
-        fontSize: 11,
+        fontSize: axisSize,
+        margin: 10,
         hideOverlap: true,
         formatter: (id) => shorts[id] || id,
         interval: config.hourly
-          ? (index, value) => String(shorts[value] || value).endsWith(":00") || index === ids.length - 1
+          ? (index, value) => {
+            const label = String(shorts[value] || value);
+            if (!label.endsWith(":00")) return false;
+            const hour = Number.parseInt(label, 10);
+            return Number.isNaN(hour) ? true : hour % (narrow ? 3 : 2) === 0;
+          }
           : "auto",
       },
     },
@@ -219,21 +237,21 @@ export function setChart(el, config) {
       type: "value",
       name: unit || "",
       nameLocation: "end",
-      nameGap: 8,
+      nameGap: 10,
       nameTextStyle: {
         color: palette.muted,
-        fontSize: 12,
+        fontSize: axisSize,
         fontWeight: 600,
         align: "left",
         padding: [0, 0, 0, 2],
       },
-      min: (extent) => Math.min(0, extent.min),
+      splitNumber: narrow ? 4 : 5,
       axisLabel: {
         color: palette.muted,
-        fontSize: 11,
+        fontSize: axisSize,
         formatter: (value) => formatAxis(value),
       },
-      splitLine: { lineStyle: { color: palette.gridline } },
+      splitLine: { lineStyle: { color: palette.gridline, type: [4, 4] } },
     },
     series: series.map((entry) => {
       const color = colorOf(palette, entry.color);
@@ -247,7 +265,7 @@ export function setChart(el, config) {
         if (type === "bar") {
           point.itemStyle = {
             color,
-            borderRadius: [4, 4, 0, 0],
+            borderRadius: [3, 3, 0, 0],
             opacity: entry.faded && entry.faded[index] ? 0.72 : 1,
             borderWidth: config.selectedId && id === config.selectedId ? 1.5 : 0,
             borderColor: palette.text,
@@ -269,15 +287,16 @@ export function setChart(el, config) {
         symbol: "circle",
         symbolSize: entry.dash ? 6 : 7,
         connectNulls: false,
-        barMaxWidth: 28,
+        barMaxWidth: 26,
+        barGap: "15%",
         emphasis: { focus: "series" },
         z: entry.dash ? 4 : (type === "line" ? 3 : 2),
       };
       if (entry.area && type === "line" && !entry.dash) {
         serie.areaStyle = {
           color: new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: withAlpha(color, 0.38) },
-            { offset: 1, color: withAlpha(color, 0.03) },
+            { offset: 0, color: withAlpha(color, entry.color === "prod" ? 0.34 : 0.12) },
+            { offset: 1, color: withAlpha(color, 0.02) },
           ]),
         };
       }

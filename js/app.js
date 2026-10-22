@@ -216,32 +216,89 @@ function metricCard({ kind, label, parts, calc, hint }) {
   return article;
 }
 
-function renderBalance(today) {
+let flowPlayed = false;
+
+function energyText(wh) {
+  const parts = energyParts(wh);
+  return parts.missing ? "sin dato" : `${parts.text} ${parts.unit}`;
+}
+
+function flowRow({ label, kind, total, segments, max, calc, animate }) {
+  const parts = energyParts(total);
+  const totalEl = h("b", { class: parts.missing ? "flow-total missing" : "flow-total" }, [
+    document.createTextNode(parts.text),
+    parts.unit ? h("span", { class: "unit", text: `\u00a0${parts.unit}` }) : null,
+  ]);
+  const head = h("div", { class: "flow-head" }, [h("span", { class: "flow-label" }, [document.createTextNode(label), calc ? badge("calculado") : null]), totalEl]);
+  const bar = h("div", { class: animate ? "flow-bar play" : "flow-bar", "aria-hidden": "true" });
+  if (isNum(total) && max > 0) {
+    bar.style.width = `${Math.max(4, (Number(total) / max) * 100)}%`;
+    const sum = segments.reduce((acc, seg) => acc + seg.wh, 0);
+    for (const seg of segments) {
+      if (!(seg.wh > 0) || !(sum > 0)) continue;
+      const el = h("i", { class: `seg ${seg.kind}` });
+      el.style.flex = `${seg.wh} 1 0`;
+      bar.append(el);
+    }
+  }
+  return h("div", { class: `flow-row ${kind}` }, [head, bar]);
+}
+
+function renderBalance(today, { day = null, av = {} } = {}) {
   const root = document.getElementById("hoy-balance");
   root.replaceChildren();
-  const rows = [
-    ["Producción", today.production_wh, "prod"],
-    ["Consumo", today.consumption_wh, "cons"],
-  ];
-  const max = Math.max(0, ...rows.map((row) => (isNum(row[1]) ? Number(row[1]) : 0)));
-  for (const [label, wh, kind] of rows) {
-    const parts = energyParts(wh);
-    const width = isNum(wh) && max > 0 ? Math.max(2, (Number(wh) / max) * 100) : 0;
-    const fill = h("div", { class: `fill ${kind}` });
-    fill.style.width = `${width}%`;
-    root.append(h("div", { class: "bal-row" }, [
-      h("span", { class: "bal-label", text: label }),
-      h("div", { class: "track", "aria-hidden": "true" }, [fill]),
-      h("b", { text: parts.missing ? "sin dato" : `${parts.text} ${parts.unit}` }),
-    ]));
+  const prod = isNum(today.production_wh) ? Number(today.production_wh) : null;
+  const cons = isNum(today.consumption_wh) ? Number(today.consumption_wh) : null;
+  const exp = isNum(today.export_wh) ? Math.max(0, Number(today.export_wh)) : null;
+  const imp = isNum(today.import_wh) ? Math.max(0, Number(today.import_wh)) : null;
+  const max = Math.max(0, prod || 0, cons || 0);
+  const prodSelf = prod != null && exp != null ? Math.max(0, prod - exp) : null;
+  const consSelf = cons != null && imp != null ? Math.max(0, cons - imp) : null;
+  const animate = !flowPlayed;
+  flowPlayed = true;
+  root.append(
+    flowRow({
+      label: "Producción",
+      kind: "prod",
+      total: today.production_wh,
+      max,
+      calc: isCalculated("production", day, av),
+      animate,
+      segments: prodSelf == null
+        ? [{ kind: "self", wh: prod || 0 }]
+        : [{ kind: "self", wh: prodSelf }, { kind: "exp", wh: exp }],
+    }),
+    flowRow({
+      label: "Consumo",
+      kind: "cons",
+      total: today.consumption_wh,
+      max,
+      calc: isCalculated("consumption", day, av),
+      animate,
+      segments: consSelf == null
+        ? [{ kind: "cons", wh: cons || 0 }]
+        : [{ kind: "self", wh: consSelf }, { kind: "imp", wh: imp }],
+    }),
+  );
+  const legend = h("ul", { class: "flow-legend" });
+  const self = prodSelf != null ? prodSelf : consSelf;
+  if (self != null) {
+    legend.append(h("li", {}, [h("i", { class: "swatch self", "aria-hidden": "true" }), "Solar usada en casa ", h("b", { text: energyText(self) })]));
   }
-  if (isNum(today.production_wh) && isNum(today.consumption_wh)) {
-    const net = Number(today.production_wh) - Number(today.consumption_wh);
+  if (exp != null) {
+    legend.append(h("li", {}, [h("i", { class: "swatch exp", "aria-hidden": "true" }), "Vertida a la red ", h("b", { text: energyText(exp) }), isCalculated("export", day, av) ? badge("calculado") : null]));
+  }
+  if (imp != null) {
+    legend.append(h("li", {}, [h("i", { class: "swatch imp", "aria-hidden": "true" }), "Comprada a la red ", h("b", { text: energyText(imp) }), isCalculated("import", day, av) ? badge("calculado") : null]));
+  }
+  if (legend.childElementCount) root.append(legend);
+  if (prod != null && cons != null) {
+    const net = prod - cons;
     const word = net > 0 ? "Superávit" : net < 0 ? "Déficit" : "Equilibrio";
-    root.append(h("p", {
-      class: "balance-net",
-      text: `${word} ${formatEnergyWh(Math.abs(net))} · producción − consumo`,
-    }));
+    root.append(h("p", { class: "balance-net" }, [
+      h("b", { text: `${word} ${formatEnergyWh(Math.abs(net))}` }),
+      " · producción − consumo",
+    ]));
   }
 }
 
@@ -339,33 +396,33 @@ function renderHoy() {
   chips.replaceChildren();
   if (day?.partial) chips.append(badge("parcial"));
   if (today.status && today.status !== "normal") chips.append(badge(String(today.status)));
-  renderBalance(today);
+  renderBalance(today, { day, av });
   const note = [];
   if (day?.partial) {
     const end = today.last_interval_end || today.last_report_at;
     note.push(end ? `Día parcial, hasta ${formatTime(end)}.` : "Día parcial.");
   }
   const updated = dateTimeParts(today.last_report_at || today.last_interval_end);
+  const rawPower = isNum(today.current_power_w) ? Number(today.current_power_w) : null;
+  // Los microinversores informan valores levemente negativos de noche: se muestran como 0 W.
+  const shownPower = rawPower != null && rawPower < 0 && rawPower > -50 ? 0 : today.current_power_w;
+  const powerHint = rawPower == null ? "" : rawPower <= 0 ? "Sin producción ahora" : "Producción instantánea";
   document.getElementById("hoy-cards").replaceChildren(
-    metricCard({ kind: "production", label: "Producción", parts: energyParts(today.production_wh), calc: isCalculated("production", day, av) }),
-    metricCard({ kind: "consumption", label: "Consumo", parts: energyParts(today.consumption_wh), calc: isCalculated("consumption", day, av) }),
-    metricCard({ kind: "import", label: "Importación", parts: energyParts(today.import_wh), calc: isCalculated("import", day, av) }),
-    metricCard({ kind: "export", label: "Exportación", parts: energyParts(today.export_wh), calc: isCalculated("export", day, av) }),
+    metricCard({ kind: "power", label: "Potencia ahora", parts: powerParts(shownPower), calc: false, hint: powerHint }),
     metricCard({
       kind: "self",
       label: "Autoconsumo",
       parts: pctParts(day?.self_consumption_pct),
       calc: isCalculated("self_consumption", day, av),
-      hint: "Parte de la producción usada en casa",
+      hint: "Producción usada en casa",
     }),
     metricCard({
       kind: "suff",
       label: "Autosuficiencia",
       parts: pctParts(day?.self_sufficiency_pct),
       calc: isCalculated("self_sufficiency", day, av),
-      hint: "Parte del consumo cubierta por el sol",
+      hint: "Consumo cubierto por el sol",
     }),
-    metricCard({ kind: "power", label: "Potencia ahora", parts: powerParts(today.current_power_w), calc: false }),
     metricCard({
       kind: "updated",
       label: "Actualización",
@@ -793,22 +850,19 @@ function renderCompare() {
     );
     const title = h("h3", {}, [document.createTextNode(row.label)]);
     if (calc) title.append(badge("calculado"));
-    metrics.append(h("article", { class: "cmp-card" }, [
-      title,
-      h("div", { class: "cmp-line" }, [h("span", { class: "k", text: nameA }), h("b", { text: row.format(aVal) })]),
-      h("div", { class: "cmp-line" }, [h("span", { class: "k", text: nameB }), h("b", { text: row.format(bVal) })]),
-      h("div", { class: "cmp-line" }, [h("span", { class: "k", text: "Diferencia" }), h("b", { text: formatDelta(aVal, bVal) })]),
-    ]));
+    metrics.append(compareCard(title, row.format(aVal), row.format(bVal), formatDelta(aVal, bVal), nameA, nameB));
   }
   const balanceA = netWh(aItem);
   const balanceB = netWh(bItem);
-  metrics.append(h("article", { class: "cmp-card" }, [
+  metrics.append(compareCard(
     h("h3", { text: "Balance de red" }),
-    h("div", { class: "cmp-line" }, [h("span", { class: "k", text: nameA }), h("b", { text: balanceText(balanceA) })]),
-    h("div", { class: "cmp-line" }, [h("span", { class: "k", text: nameB }), h("b", { text: balanceText(balanceB) })]),
-    h("div", { class: "cmp-line" }, [h("span", { class: "k", text: "Diferencia" }), h("b", { text: formatDelta(balanceA, balanceB) })]),
-    h("small", { class: "hint", text: "Exportación menos importación" }),
-  ]));
+    balanceText(balanceA),
+    balanceText(balanceB),
+    formatDelta(balanceA, balanceB),
+    nameA,
+    nameB,
+    "Exportación menos importación",
+  ));
 
   const chartRows = rows.filter((row) => row.chart);
   const ids = chartRows.map((row) => row.field);
@@ -842,6 +896,20 @@ function renderCompare() {
     pointer: "shadow",
     ariaLabel: `Comparación de ${nameA} y ${nameB}`,
   });
+}
+
+function compareCard(title, aText, bText, delta, nameA, nameB, hint) {
+  return h("article", { class: "cmp-card" }, [
+    h("div", { class: "cmp-top" }, [
+      title,
+      h("span", { class: "cmp-delta", title: "Diferencia de A frente a B" }, [h("span", { class: "sr-only", text: "Diferencia " }), delta]),
+    ]),
+    h("div", { class: "cmp-vals" }, [
+      h("div", { class: "cmp-v" }, [h("i", { class: "swatch prod", "aria-hidden": "true" }), h("span", { class: "sr-only", text: `${nameA}: ` }), h("b", { text: aText })]),
+      h("div", { class: "cmp-v" }, [h("i", { class: "swatch cons", "aria-hidden": "true" }), h("span", { class: "sr-only", text: `${nameB}: ` }), h("b", { text: bText })]),
+    ]),
+    hint ? h("small", { class: "hint", text: hint }) : null,
+  ]);
 }
 
 function balanceText(net) {
@@ -953,6 +1021,10 @@ function showView(name, { updateHash = true, replace = false } = {}) {
     const on = button.dataset.view === name;
     button.setAttribute("aria-selected", on ? "true" : "false");
     button.tabIndex = on ? 0 : -1;
+    if (on && button.parentElement && button.parentElement.scrollWidth > button.parentElement.clientWidth) {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      button.scrollIntoView({ block: "nearest", inline: "nearest", behavior: reduce ? "auto" : "smooth" });
+    }
   });
   document.title = `Solar · ${labelOf(name)}`;
   if (updateHash && location.hash !== `#${name}`) {
@@ -989,6 +1061,7 @@ function enterApp() {
 function logout() {
   clearDerivedKey(state.dataset);
   disposeCharts();
+  flowPlayed = false;
   state.indexed = null;
   document.getElementById("password").value = "";
   history.replaceState(null, "", `${location.pathname}${location.search}`);
@@ -1177,7 +1250,10 @@ function bind() {
   document.getElementById("logout").addEventListener("click", logout);
   document.getElementById("theme-toggle").addEventListener("click", () => {
     const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
-    document.documentElement.setAttribute("data-theme", next);
+    const root = document.documentElement;
+    root.classList.add("theme-switching");
+    root.setAttribute("data-theme", next);
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
     try { localStorage.setItem(THEME_KEY, next); } catch { /* almacenamiento bloqueado */ }
     syncThemeButton();
     if (state.indexed) renderView(state.view);
