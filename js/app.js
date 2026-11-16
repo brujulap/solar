@@ -10,13 +10,16 @@ import {
 import {
   dateTimeParts,
   energyParts,
+  eurParts,
   formatAxisLabel,
   formatDateTime,
   formatDayLong,
   formatDayMedium,
   formatDelta,
   formatEnergyWh,
+  formatEur,
   formatInt,
+  formatNumber,
   formatMonthKey,
   formatPeriod,
   formatPeriodCompact,
@@ -30,6 +33,7 @@ import {
 import {
   batteryLabel,
   contextItems,
+  daysOf,
   ensureId,
   findItem,
   hasDerivedImport,
@@ -387,6 +391,170 @@ function paintCurve(el, points, { slider, ariaLabel, openIndex = -1 }) {
   return true;
 }
 
+const COST_NOTE = "La importación por periodo sale de las curvas de 15 min y puede diferir un poco del medidor. No incluye el alquiler del contador ni los excedentes.";
+const COST_MISSING = "sin datos de costo";
+const PERIOD_LABELS = [
+  ["p1", "import_wh_p1", "Punta"],
+  ["p2", "import_wh_p2", "Llano"],
+  ["p3", "import_wh_p3", "Valle"],
+];
+
+function costObject(item) {
+  const cost = item?.cost;
+  if (!cost || typeof cost !== "object" || !isNum(cost.total_eur)) return null;
+  return cost;
+}
+
+function tariffInfo() {
+  return state.indexed?.meta?.tariff || null;
+}
+
+function tariffLabel() {
+  const tariff = tariffInfo();
+  if (!tariff) return "";
+  return [tariff.name, tariff.access_tariff].filter(Boolean).join(" · ");
+}
+
+function taxLabel(name, pct) {
+  if (!isNum(pct)) return name;
+  const n = Number(pct);
+  const digits = Number.isInteger(n) ? 0 : 2;
+  return `${name} ${formatNumber(n, digits)} %`;
+}
+
+function coverageText(cost, days) {
+  if (!isNum(cost?.days_with_cost) || !isNum(days)) return "";
+  const total = Number(days);
+  const noun = total === 1 ? "día" : "días";
+  return `${formatInt(cost.days_with_cost)} de ${formatInt(total)} ${noun} con costo`;
+}
+
+function costHint(item, grain) {
+  const cost = costObject(item);
+  if (!cost) return grain === "day" ? "Sin curva de 15 min" : "Sin días con costo";
+  if (grain !== "day") return coverageText(cost, item?.days) || "Con IVA";
+  return item?.partial ? "Día en curso, con IVA" : "Con IVA";
+}
+
+function costParts(item) {
+  const cost = costObject(item);
+  if (!cost) return { text: COST_MISSING, unit: "", missing: true };
+  return eurParts(cost.total_eur);
+}
+
+function importByPeriod(item, grain) {
+  const days = grain === "day" ? [item] : daysOf(state.indexed, grain, item);
+  const totals = { p1: null, p2: null, p3: null };
+  for (const day of days) {
+    const cost = costObject(day);
+    if (!cost) continue;
+    for (const [slot, key] of PERIOD_LABELS) {
+      if (!isNum(cost[key])) continue;
+      totals[slot] = (totals[slot] ?? 0) + Number(cost[key]);
+    }
+  }
+  if (totals.p1 == null && totals.p2 == null && totals.p3 == null) return null;
+  return totals;
+}
+
+function costLine(term, amount, modifier) {
+  return h("div", { class: modifier ? `cost-line ${modifier}` : "cost-line" }, [
+    h("dt", { text: term }),
+    h("dd", { text: amount }),
+  ]);
+}
+
+function renderCostBody(body, item, grain) {
+  body.replaceChildren();
+  const cost = costObject(item);
+  if (!cost) return;
+  const periods = importByPeriod(item, grain);
+  if (periods) {
+    body.append(h("p", { class: "cost-group", text: "Importación por periodo" }));
+    const energy = h("dl", { class: "cost-list" });
+    for (const [slot, , label] of PERIOD_LABELS) {
+      if (periods[slot] == null) continue;
+      energy.append(costLine(label, formatEnergyWh(periods[slot]), "period"));
+    }
+    body.append(energy);
+  }
+  const tariff = tariffInfo() || {};
+  const money = h("dl", { class: "cost-list" });
+  const rows = [
+    ["Energía", formatEur(cost.energy_eur), periods ? "money-start" : ""],
+    ["Potencia", formatEur(cost.power_eur), ""],
+    ["Bono social", formatEur(cost.bono_social_eur), ""],
+    ["Subtotal", formatEur(cost.subtotal_eur), ""],
+    [taxLabel("IEE", tariff.iee_pct), formatEur(cost.iee_eur), ""],
+    [taxLabel("IVA", tariff.iva_pct), formatEur(cost.iva_eur), ""],
+  ];
+  for (const [label, amount, modifier] of rows) money.append(costLine(label, amount, modifier));
+  money.append(costLine("Total con IVA", formatEur(cost.total_eur), "cost-total"));
+  body.append(money);
+}
+
+function renderCostPanel(prefix, item, grain) {
+  const tariff = document.getElementById(`${prefix}-cost-tariff`);
+  const label = tariffLabel();
+  tariff.textContent = label;
+  tariff.hidden = !label;
+  const hero = document.getElementById(`${prefix}-cost-hero`);
+  if (hero) {
+    const cost = costObject(item);
+    hero.replaceChildren(cost
+      ? document.createTextNode(formatEur(cost.total_eur))
+      : h("span", { class: "missing", text: "Sin datos de costo" }));
+    const coverage = document.getElementById(`${prefix}-cost-coverage`);
+    const hint = costHint(item, grain);
+    coverage.textContent = hint;
+    coverage.hidden = !hint;
+    coverage.className = cost && grain !== "day" ? "cost-coverage" : "note";
+  }
+  renderCostBody(document.getElementById(`${prefix}-cost-body`), item, grain);
+  document.getElementById(`${prefix}-cost-note`).textContent = costObject(item) ? COST_NOTE : "";
+}
+
+function costChartDays(grain, id) {
+  if (grain === "day") return contextItems(state.indexed, "day", id).filter((day) => costObject(day));
+  const item = findItem(state.indexed, grain, id);
+  return daysOf(state.indexed, grain, item).filter((day) => costObject(day));
+}
+
+function costChartCaption(grain, id) {
+  if (grain === "day" || grain === "month") {
+    const key = grain === "day" ? id.slice(0, 7) : id;
+    return `${formatMonthKey(key)} · solo días con costo`;
+  }
+  if (grain === "week") return "Esta semana · solo días con costo";
+  return `${id} · solo días con costo`;
+}
+
+function paintCostChart(el, days, selectedId, onSelect, ariaLabel) {
+  if (!days.length || !window.echarts) {
+    el.hidden = true;
+    return false;
+  }
+  el.hidden = false;
+  setChart(el, {
+    ...categoryConfig(days, "day"),
+    series: [{
+      name: "Costo",
+      color: "imp",
+      type: "bar",
+      values: days.map((day) => Number(day.cost.total_eur)),
+      faded: days.map((day) => day.partial === true),
+    }],
+    selectedId,
+    onSelect,
+    unit: "€",
+    slider: true,
+    inside: true,
+    pointer: "shadow",
+    ariaLabel,
+  });
+  return true;
+}
+
 function renderHoy() {
   const today = state.indexed.today || {};
   const day = today.date ? state.indexed.byDate.get(today.date) : null;
@@ -429,7 +597,18 @@ function renderHoy() {
       parts: updated.missing ? updated : { ...updated, stacked: true },
       calc: false,
     }),
+    metricCard({
+      kind: "cost",
+      label: "Costo",
+      parts: costParts(day),
+      calc: Boolean(costObject(day)),
+      hint: costHint(day, "day"),
+    }),
   );
+  const costPanel = document.getElementById("hoy-cost-panel");
+  const todayCost = costObject(day);
+  costPanel.hidden = !todayCost;
+  if (todayCost) renderCostPanel("hoy", day, "day");
 
   const pack = today.date ? state.indexed.intraday[today.date] : null;
   const points = pack?.points || [];
@@ -571,7 +750,13 @@ function paintBars(el, items, grain, series, selectedId, onSelect, ariaLabel) {
   return true;
 }
 
-function valueCell(text, calc) {
+function valueCell(text, calc, missingLabel) {
+  if (text == null) {
+    return h("td", { class: "num" }, [
+      h("span", { class: "sr-only", text: missingLabel || "sin dato" }),
+      h("span", { class: "empty-mark", "aria-hidden": "true", text: "—" }),
+    ]);
+  }
   const td = h("td", { class: "num" }, [document.createTextNode(text)]);
   if (calc) td.append(badge("calculado"));
   return td;
@@ -609,8 +794,11 @@ function renderTable(table, grain, items, selectedId, columns) {
     if (isIncomplete(grain, item)) label.append(badge("parcial"));
     tr.append(label);
     for (const column of columns) {
-      const calc = column.kind ? isCalculated(column.kind, grain === "day" ? item : null, av) : false;
-      tr.append(valueCell(column.render(item), calc));
+      const rendered = column.render(item);
+      const calc = rendered != null && column.kind
+        ? isCalculated(column.kind, grain === "day" ? item : null, av)
+        : false;
+      tr.append(valueCell(rendered, calc, column.missingLabel));
     }
     tbody.append(tr);
   }
@@ -632,6 +820,15 @@ const ENERGY_COLUMNS = [
   { label: "Exportación", kind: "export", render: (item) => formatEnergyWh(item.export_wh) },
   { label: "Autoconsumo", kind: "self_consumption", render: (item) => formatPct(item.self_consumption_pct) },
   { label: "Autosuficiencia", kind: "self_sufficiency", render: (item) => formatPct(item.self_sufficiency_pct) },
+  {
+    label: "Costo",
+    title: "Costo calculado, con IVA",
+    missingLabel: COST_MISSING,
+    render: (item) => {
+      const cost = costObject(item);
+      return cost ? formatEur(cost.total_eur) : null;
+    },
+  },
 ];
 
 const GRID_COLUMNS = [
@@ -689,6 +886,24 @@ function renderPeriodos() {
   document.getElementById("period-context").textContent = contextBlurb(grain, id);
   const item = findItem(state.indexed, grain, id);
   renderPeriodDetail(item, grain);
+  renderCostPanel("period", item, grain);
+  const costDays = costChartDays(grain, id);
+  const caption = document.getElementById("period-cost-chart-caption");
+  caption.textContent = id && costDays.length ? costChartCaption(grain, id) : "";
+  const costChart = document.getElementById("chart-period-cost");
+  const costPainted = paintCostChart(
+    costChart,
+    costDays,
+    grain === "day" ? id : null,
+    (date) => {
+      state.period.grain = "day";
+      state.period.id = date;
+      renderPeriodos();
+    },
+    `Costo diario calculado, con IVA. ${caption.textContent || "Sin días con costo"}`,
+  );
+  document.getElementById("period-cost-empty").hidden = costPainted;
+  document.getElementById("period-cost-reset").hidden = costDays.length <= 8;
   const items = contextItems(state.indexed, grain, id);
   const energy = [
     whSeries(items, grain, "production", "Producción", "prod", "production_wh"),
@@ -862,6 +1077,19 @@ function renderCompare() {
     nameA,
     nameB,
     "Exportación menos importación",
+  ));
+  const costA = costObject(aItem);
+  const costB = costObject(bItem);
+  const costTitle = h("h3", {}, [document.createTextNode("Costo")]);
+  if (costA || costB) costTitle.append(badge("calculado"));
+  metrics.append(compareCard(
+    costTitle,
+    costA ? formatEur(costA.total_eur) : COST_MISSING,
+    costB ? formatEur(costB.total_eur) : COST_MISSING,
+    formatDelta(costA?.total_eur, costB?.total_eur),
+    nameA,
+    nameB,
+    "Con IVA",
   ));
 
   const chartRows = rows.filter((row) => row.chart);
@@ -1291,6 +1519,7 @@ function bind() {
   document.getElementById("period-prev").addEventListener("click", () => stepBucket("period", -1));
   document.getElementById("period-next").addEventListener("click", () => stepBucket("period", 1));
   document.getElementById("period-reset").addEventListener("click", () => renderPeriodos());
+  document.getElementById("period-cost-reset").addEventListener("click", () => renderPeriodos());
   document.getElementById("grid-prev").addEventListener("click", () => stepBucket("grid", -1));
   document.getElementById("grid-next").addEventListener("click", () => stepBucket("grid", 1));
   document.getElementById("grid-reset").addEventListener("click", () => renderGrid());

@@ -111,6 +111,16 @@ export function formatPct(value) {
   return parts.missing ? "sin dato" : `${parts.text} ${parts.unit}`;
 }
 
+export function eurParts(value) {
+  if (!isNum(value)) return missing();
+  return { text: formatNumber(value, 2), unit: "€", missing: false };
+}
+
+export function formatEur(value) {
+  const parts = eurParts(value);
+  return parts.missing ? "sin dato" : `${parts.text}\u00a0€`;
+}
+
 export function formatDelta(a, b) {
   if (!isNum(a) || !isNum(b) || Number(b) === 0) return "sin dato";
   const pct = ((Number(a) - Number(b)) / Math.abs(Number(b))) * 100;
@@ -245,6 +255,7 @@ export function formatAxisLabel(grain, item) {
 
 export function formatChartValue(value, unit) {
   if (value == null || Number.isNaN(Number(value))) return "sin dato";
+  if (unit === "€") return `${formatNumber(value, 2)}\u00a0€`;
   const digits = unit === "kW" ? 2 : Math.abs(Number(value)) >= 100 ? 1 : 2;
   return `${formatNumber(value, digits)} ${unit}`;
 }

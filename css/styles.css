@@ -839,6 +839,85 @@ td .badge, th .badge { margin-left: 6px; }
   .hero h2 { font-size: var(--fs-xl); }
 }
 
+/* ---------- Costo ---------- */
+.cards .card[data-kind="cost"] {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+  border-left: 0;
+}
+.card[data-kind="cost"] .value.missing {
+  color: var(--text);
+  font-size: var(--fs-lg);
+  font-weight: 650;
+}
+.cost-tariff {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+.cost-hero {
+  margin: 8px 0 0;
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--text);
+  white-space: nowrap;
+}
+.cost-hero .missing {
+  display: inline-block;
+  color: var(--text);
+  font-size: var(--fs-lg);
+  font-weight: 650;
+  letter-spacing: 0;
+  white-space: normal;
+}
+.cost-coverage {
+  margin: 6px 0 0;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+.cost-group {
+  margin: 14px 0 0;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+.cost-list { margin: 0; }
+.cost-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.cost-line dt {
+  margin: 0;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+.cost-line.period dt { padding-left: 12px; }
+.cost-line dd {
+  margin: 0;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+.cost-line.money-start { margin-top: 12px; }
+.cost-line.cost-total { border-bottom: 0; }
+.cost-line.cost-total dt,
+.cost-line.cost-total dd { font-size: var(--fs-lg); }
+.cost-panel .note { margin: 10px 0 2px; }
+.empty-mark { color: var(--text); font-weight: 650; }
+
+@media (min-width: 720px) {
+  .cost-hero { font-size: var(--fs-3xl); }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .record:not(.static):hover, .chip-btn:hover, #logout:hover, .icon-btn:hover,
   .pager button:not(:disabled):hover, .password-row button:hover { border-color: var(--accent); }
