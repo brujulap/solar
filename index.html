@@ -114,6 +114,14 @@
           <p id="hoy-note" class="note"></p>
         </div>
         <div id="hoy-cards" class="cards"></div>
+        <section class="panel cost-panel" id="hoy-cost-panel" aria-labelledby="hoy-cost-heading" hidden>
+          <div class="panel-head">
+            <h3 id="hoy-cost-heading">Costo calculado</h3>
+            <p id="hoy-cost-tariff" class="cost-tariff" hidden></p>
+          </div>
+          <div id="hoy-cost-body"></div>
+          <p id="hoy-cost-note" class="note"></p>
+        </section>
         <section class="panel" id="hoy-chart-panel">
           <div class="panel-head">
             <h3>Curva de hoy</h3>
@@ -167,6 +175,25 @@
         </div>
         <p id="period-context" class="context"></p>
         <div id="period-detail"></div>
+        <section class="panel cost-panel" id="period-cost-panel" aria-labelledby="period-cost-heading">
+          <div class="panel-head">
+            <h3 id="period-cost-heading">Costo calculado</h3>
+            <p id="period-cost-tariff" class="cost-tariff" hidden></p>
+          </div>
+          <p id="period-cost-hero" class="cost-hero"></p>
+          <p id="period-cost-coverage" class="cost-coverage" hidden></p>
+          <div id="period-cost-body"></div>
+          <p id="period-cost-note" class="note"></p>
+        </section>
+        <section class="panel" id="period-cost-chart-panel" aria-labelledby="period-cost-chart-heading">
+          <div class="panel-head">
+            <h3 id="period-cost-chart-heading">Costo por día</h3>
+            <button type="button" id="period-cost-reset" class="text-btn">Restablecer zoom</button>
+          </div>
+          <p id="period-cost-chart-caption" class="note"></p>
+          <p id="period-cost-empty" class="note" hidden>Sin días con costo en este periodo.</p>
+          <div id="chart-period-cost" class="chart chart-short"></div>
+        </section>
         <section class="panel">
           <div class="panel-head">
             <h3>Producción y consumo</h3>
